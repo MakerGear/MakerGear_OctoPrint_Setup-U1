@@ -1826,16 +1826,16 @@ $(function() {
 				self.newProbeOffset = (parseFloat(self.probeOffset())-parseFloat(parseFloat(self.ZWiggleHeight())-self.stockZWiggleHeight));
 
 				if (self.newProbeOffset.toString() == "NaN") {
-					self.notify("Offset Setting Error","There was an error when setting the Probe Offset.  Please refresh the page and try again.  Support values: self.newProbeOffset="+self.newProbeOffset.toString()+" ; self.probeOffset="+self.probeOffset().toString()+" ; self.ZWiggleHeight="+self.ZWiggleHeight().toString()+" ; self.stockZWiggleHeight="+self.stockZWiggleHeight.toString(), "error");
+					self.notify("Offset Setting Error","There was an error when setting the Probe Offset.  Please refresh the page and try again.  Support values: self.newProbeOffset="+self.newProbeOffset.toFixed(2)+" ; self.probeOffset="+self.probeOffset().toString()+" ; self.ZWiggleHeight="+self.ZWiggleHeight().toString()+" ; self.stockZWiggleHeight="+self.stockZWiggleHeight.toString(), "error");
 					self.mgLog("Offset setting error:");
-					self.mgLog("self.newProbeOffset = "+self.newProbeOffset.toString());
+					self.mgLog("self.newProbeOffset = "+self.newProbeOffset.toFixed(2));
 					self.mgLog("self.probeOffset = "+self.probeOffset().toString());
 					self.mgLog("self.ZWiggleHeight = "+self.ZWiggleHeight().toString());
 					return;
 				}
 
-				self.adminAction('changeRrfConfig','command', {'targetParameter':'probeOffset','newValue':self.newProbeOffset.toString()});
-				self.mgLog("newProbeOffset: "+self.newProbeOffset.toString());
+				self.adminAction('changeRrfConfig','command', {'targetParameter':'probeOffset','newValue':self.newProbeOffset.toFixed(2)});
+				self.mgLog("newProbeOffset: "+self.newProbeOffset.toFixed(2));
 				self.mgLog("ProbeOffString: "+self.ProbeOffString);
 				self.rrfMaintenanceReport(self.ProbeOffString + "\n"+self.rrfMaintenanceReport());
 
@@ -5733,7 +5733,7 @@ $(function() {
 						}
 					}
 				} else {
-					self.filter = /G31 .* Z(.?\d+\.?\d?)/;
+					self.filter = /G31 .* Z(\d+\.\d+)/;
 					if ((match = self.filter.exec(data.probeOffsetLine)) !== null){
 						if (match[1] !== undefined){
 							self.mgLog("probeOffsetLine match: "+match);
