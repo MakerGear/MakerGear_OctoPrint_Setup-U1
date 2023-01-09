@@ -5820,11 +5820,11 @@ $(function() {
 				middleOffset = 0;
 				outerOffset = 0;
 			}
-			OctoPrint.control.sendGcode(["M140 P0 S"+targetTemperature.toString(),
-				"M140 P1 S"+(targetTemperature+middleOffset).toString(),
-				"M140 P2 S"+(targetTemperature+outerOffset).toString(),
-				"M140 P3 S"+(targetTemperature+outerOffset).toString()
-				]);
+			//OctoPrint.control.sendGcode(["M140 P0 S"+targetTemperature.toString(),
+			//	"M140 P1 S"+(targetTemperature+middleOffset).toString(),
+			//	"M140 P2 S"+(targetTemperature+outerOffset).toString(),
+			//	"M140 P3 S"+(targetTemperature+outerOffset).toString()
+			//	]);
 
 		};
 
