@@ -729,6 +729,17 @@
 									</div>
 								</div>
 							</div>
+
+							<div class="form-horizontal">
+								<div class="control-group">
+									<label class="control-label">{{ _('Copy Maintenance Scripts') }}</label>
+									<div class="controls">
+											This will copy over maintenance procedure scripts from the MakerGear plugin in order for OctoPrint to run MG maintenance procedures. 
+											<br>
+										<button class="btn btn-primary" data-bind="enable: loginState.isUser() && $root.unlockAdvanced(), click: function() { $root.commandResponse(''), $root.adminAction('copyScripts'), $root.showCommandResponse() }">Copy Maintenance Scripts</button>
+									</div>
+								</div>
+							</div>
 							
 							
 							<br><br>

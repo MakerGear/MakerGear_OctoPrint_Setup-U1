@@ -1180,6 +1180,10 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 			self._execute("/home/pi/.octoprint/scripts/stopSsh.sh")
 			self._logger.info("SSH service stopped!")
 			self.adminAction(dict(action="sshState"))
+		elif action["action"] == 'copyScripts':
+			self._logger.info("Copying maintenance scripts to OctoPrint")
+			self._execute("/home/pi/MakerGear_OctoPrint_Setup-U1/octoprint_mgsetup/static/maintenance/scripts/testing.sh")
+			self._logger.info("Done!")
 		elif action["action"] == 'resetWifi':
 			#subprocess.call("/home/pi/.octoprint/scripts/resetWifi.sh")
 			self._execute("/home/pi/.octoprint/scripts/resetWifi.sh")
@@ -2088,6 +2092,8 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 #__plugin_settings_overlay__ = dict(server=dict(port=5001))
 
 __plugin_name__ = "MakerGear Setup"
+
+__plugin_pythoncompat__ = ">=3,<4"  # Only Python 3
 
 __plugin_implementation__ = MGSetupPlugin()
 
