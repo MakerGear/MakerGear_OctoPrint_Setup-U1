@@ -221,6 +221,7 @@ $(function() {
 		self.printerViewString = ko.observable(undefined);
 		self.apiKey = ko.observable(undefined);
 		self.printerViewString = ko.pureComputed(function(){
+			return ("One or more values are undefined.");
 			if ((self.settings.api_enabled()) && (self.settings.api_allowCrossOrigin())){
 				if ((self.ipAddress()!==undefined) && (self.hostnameJS() !== undefined) && (self.ipPort()!== undefined) ){
 					return ("IP:"+self.ipAddress().toString()+"|HOSTNAME:"+self.hostnameJS()+"|PORT:"+self.ipPort()+"|API:"+self.apiKey());
@@ -3890,7 +3891,7 @@ $(function() {
 
 				
 				self.waitingForProbeResponse(true);
-				self.probeFail = window.setTimeout(function() {self.probeCheckFailed()},100000);
+				self.probeFail = window.setTimeout(function() {self.probeCheckFailed()},180000);
 			}
 			if (self.probeStep() === 3){
 				if (!self.rrf()){
@@ -5820,11 +5821,11 @@ $(function() {
 				middleOffset = 0;
 				outerOffset = 0;
 			}
-			//OctoPrint.control.sendGcode(["M140 P0 S"+targetTemperature.toString(),
-			//	"M140 P1 S"+(targetTemperature+middleOffset).toString(),
-			//	"M140 P2 S"+(targetTemperature+outerOffset).toString(),
-			//	"M140 P3 S"+(targetTemperature+outerOffset).toString()
-			//	]);
+			OctoPrint.control.sendGcode(["M140 P0 S"+targetTemperature.toString(),
+				"M140 P1 S"+(targetTemperature+middleOffset).toString(),
+				"M140 P2 S"+(targetTemperature+outerOffset).toString(),
+				"M140 P3 S"+(targetTemperature+outerOffset).toString()
+				]);
 
 		};
 
