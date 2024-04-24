@@ -185,11 +185,16 @@ $(function() {
 		self.tools(self.temperatures.tools());
 
 		self.isDual = ko.pureComputed(function(){
-			if ((self.settings.printerProfiles.currentProfileData().extruder.count() == 2) || self.rrf() ){
-				self.mgLog("We're a Dual!");
-				return true;
+			if (self.settings.printerProfiles.currentProfileData() != null){
+				if ((self.settings.printerProfiles.currentProfileData().extruder.count() == 2) || self.rrf() ){
+					self.mgLog("We're a Dual!");
+					return true;
+				} else {
+					self.mgLog("We're a Single!");
+					return false;
+				}
 			} else {
-				self.mgLog("We're a Single!");
+				self.mgLog("currentProfileData is null, proceeding as a single extruder for now.");
 				return false;
 			}
 		},this); 
@@ -6061,7 +6066,12 @@ $(function() {
 
 		self.parseProfile = function() {
 
-			self.profileString(self.settings.printerProfiles.currentProfileData().model().toString());
+			if (self.settings.printerProfiles.currentProfileData() != null){
+				self.profileString(self.settings.printerProfiles.currentProfileData().model().toString());
+			} else {
+				self.mgLog("currentProfileData is null, setting profile string to an empty string for now.");
+				self.profileString("");
+			}
 			self.mgLog("profileString:");
 			self.mgLog(self.profileString());
 			if (self.profileString() === ""){
