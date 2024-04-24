@@ -1,6 +1,6 @@
 # coding=utf-8
 
-from __future__ import absolute_import, division, print_function
+
 import re
 
 
@@ -20,9 +20,10 @@ import time
 import datetime
 import errno
 import sys
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import ftplib
-from StringIO import StringIO
+import requests
+from io import StringIO
 from logging.handlers import TimedRotatingFileHandler
 from logging.handlers import RotatingFileHandler
 from zipfile import *
@@ -111,6 +112,11 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 		self.duetFtpOtherFile = StringIO()
 		self.duetFtpOtherFileLines = []
 		self.rrf = True
+
+		self.rrfUseHTTP = True
+		self.duetHttpConnected = False
+
+
 		self.watchCommands = ["M206", "M218", "FIRMWARE_NAME", "Error", "z_min", "Bed X:", "M851", "= [[ ", "Settings Stored", "G31", "G10", "U:"]
 		# self.duetFtpDownloadDirectory = TODO figure out where to download files from the Duet
 
@@ -232,12 +238,12 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 		for i in range(0, iterations+1):
 			self._logger.info("Testing Internet Connection, iteration "+str(i)+" of "+str(iterations)+", timeout of "+str(timeout)+" .")
 			try:
-				response=urllib2.urlopen(url,timeout=timeout)
+				response=urllib.request.urlopen(url,timeout=timeout)
 				self._logger.info("Check Internet Passed.  URL: "+str(url))
 				self.internetConnection = True
 				self._plugin_manager.send_plugin_message("mgsetup", dict(internetConnection = self.internetConnection))
 				return True
-			except urllib2.URLError as err: pass
+			except urllib.error.URLError as err: pass
 			if (i >= iterations):
 				self._logger.info("Testing Internet Connection Failed, iteration "+str(i)+" of "+str(iterations)+", timeout of "+str(timeout)+" .  Looking for URL: "+str(url))
 				self.internetConnection = False
@@ -259,6 +265,9 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 		self._logger.info(self._printer_profile_manager.get_all()["_default"]["extruder"]["count"])
 		# self._logger.info(__version__)
 
+		if self.rrf:
+			self.watchCommands = ["Endstops", "Stopped at height", "Some computed corrections", "Leadscrew adjustments", "Tool 0 offsets", "Tool 1 offsets", "Tool 2 offsets", "U:"]
+			self._logger.info("RRF true - changing watchCommands array.")
 
 		try:
 			subprocess.call("/home/pi/.octoprint/scripts/hosts.sh") #recreate hostsname.js for external devices/ print finder
@@ -307,7 +316,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 					shutil.copy(full_src_name, dest)
 					self._logger.info("Had to overwrite "+file_name+" with new version.")
 			if ".sh" in file_name:
-				os.chmod(full_dest_name, 0755)
+				os.chmod(full_dest_name, 0o755)
 
 		src_files = os.listdir(self._basefolder+"/static/maintenance/cura/")
 		src = (self._basefolder+"/static/maintenance/cura/")
@@ -323,19 +332,19 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 					shutil.copy(full_src_name, dest)
 					self._logger.info("Had to overwrite "+file_name+" with new version.")
 		try:
-			os.chmod(self._basefolder+"/static/js/hostname.js", 0666)
+			os.chmod(self._basefolder+"/static/js/hostname.js", 0o666)
 		except OSError:
 			self._logger.info("Hostname.js doesn't exist?")
 		except:
 			raise
 		try:
-			os.chmod(self._basefolder+"/static/patch/patch.sh", 0755)
+			os.chmod(self._basefolder+"/static/patch/patch.sh", 0o755)
 		except OSError:
 			self._logger.info("Patch.sh doesn't exist?")
 		except:
 			raise
 		try:
-			os.chmod(self._basefolder+"/static/patch/logpatch.sh", 0755)
+			os.chmod(self._basefolder+"/static/patch/logpatch.sh", 0o755)
 		except OSError:
 			self._logger.info("logpatch.sh doesn't exist?")
 		except:
@@ -344,7 +353,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 
 		try:
 			self.ip = str(([l for l in ([ip for ip in socket.gethostbyname_ex(socket.gethostname())[2] if not ip.startswith("127.")][:1], [[(s.connect(('8.8.8.8', 53)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1]]) if l][0][0]))
-		except IOError, e:
+		except IOError as e:
 			self._logger.info(e)
 		except:
 			raise
@@ -390,9 +399,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 				
 			
 			
-		if self.rrf:
-			self.watchCommands = ["Endstops", "Stopped at height", "Some computed corrections", "Leadscrew adjustments", "Tool 0 offsets", "Tool 1 offsets", "Tool 2 offsets", "U:"]
-			self._logger.info("RRF true - changing watchCommands array.")
+
 
 
 
@@ -615,7 +622,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 		# kwargs.update(dict(async=True, stdout=sarge.Capture(), stderr=sarge.Capture()))
 
 		try:
-			p = sarge.run(command, async=True, stdout=sarge.Capture(), stderr=sarge.Capture())
+			p = sarge.run(command, async_=True, stdout=sarge.Capture(), stderr=sarge.Capture())
 			while len(p.commands) == 0:
 				# somewhat ugly... we can't use wait_events because
 				# the events might not be all set if an exception
@@ -654,7 +661,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 					if errorFlag == False:
 						self._plugin_manager.send_plugin_message("mgsetup", dict(commandResponse = "\n\r"))
 
-					lines = map(lambda x: self._to_unicode(x, errors="replace"), lines)
+					lines = [self._to_unicode(x, errors="replace") for x in lines]
 					#_log_stderr(*lines)
 					all_stderr += list(lines)
 					self._plugin_manager.send_plugin_message("mgsetup", dict(commandError = all_stderr))
@@ -665,7 +672,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 
 				lines = p.stdout.readlines(timeout=0.5)
 				if lines:
-					lines = map(lambda x: self._to_unicode(x, errors="replace"), lines)
+					lines = [self._to_unicode(x, errors="replace") for x in lines]
 					#_log_stdout(*lines)
 					all_stdout += list(lines)
 					self._logger.info(lines)
@@ -685,7 +692,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 
 		lines = p.stderr.readlines()
 		if lines:
-			lines = map(lambda x: self._to_unicode(x, errors="replace"), lines)
+			lines = [self._to_unicode(x, errors="replace") for x in lines]
 			#_log_stderr(*lines)
 			all_stderr += lines
 			self._plugin_manager.send_plugin_message("mgsetup", dict(commandError = all_stderr))
@@ -695,7 +702,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 
 		lines = p.stdout.readlines()
 		if lines:
-			lines = map(lambda x: self._to_unicode(x, errors="replace"), lines)
+			lines = [self._to_unicode(x, errors="replace") for x in lines]
 			#_log_stdout(*lines)
 			all_stdout += lines
 
@@ -730,7 +737,7 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 			else:
 				self._execute("sudo chgrp pi /home/pi/.octoprint/config.yaml.backup")
 				self._execute("sudo chown pi /home/pi/.octoprint/config.yaml.backup")
-				os.chmod("/home/pi/.octoprint/config.yaml.backup", 0600)
+				os.chmod("/home/pi/.octoprint/config.yaml.backup", 0o600)
 				self._plugin_manager.send_plugin_message("mgsetup", dict(commandError = "Changed the owner, group and permissions of config.yaml.backup - please try to Update Firmware again to backup config.yaml.\n"))
 
 	def collectLogs(self):
@@ -1180,6 +1187,11 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 			self._execute("/home/pi/.octoprint/scripts/stopSsh.sh")
 			self._logger.info("SSH service stopped!")
 			self.adminAction(dict(action="sshState"))
+		elif action["action"] == 'copyScripts':
+			self._logger.info("Copying maintenance scripts to OctoPrint")
+						#  /home/pi/oprint/lib/python3.7/site-packages/octoprint_mgsetup/static/maintenance/scripts/copyScripts.sh
+			self._execute("sh /home/pi/oprint/lib/python3.7/site-packages/octoprint_mgsetup/static/maintenance/scripts/copyScripts.sh")
+			self._logger.info("Done!")
 		elif action["action"] == 'resetWifi':
 			#subprocess.call("/home/pi/.octoprint/scripts/resetWifi.sh")
 			self._execute("/home/pi/.octoprint/scripts/resetWifi.sh")
@@ -1590,72 +1602,118 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 	def rrfFtpConnect(self, retries=1):
 		tryCount = 0
 		if not self.checkRrfConnection():
-			self.duetFtpConnected = False
-			while (not self.duetFtpConnected) and (tryCount <= retries):
-				try:
-					self.duetFtp = ftplib.FTP(self.duetFtpIp)
-					self.duetFtp.login(self.duetFtpUser,self.duetFtpPassword)
-					self.duetFtpConnected = True
-					tryCount += 1
+			if not self.rrfUseHTTP:
+				self.duetFtpConnected = False
+				while (not self.duetFtpConnected) and (tryCount <= retries):
+					try:
+						self.duetFtp = ftplib.FTP(self.duetFtpIp)
+						self.duetFtp.login(self.duetFtpUser,self.duetFtpPassword)
+						self.duetFtpConnected = True
+						tryCount += 1
+						return True
+					except Exception as e:
+						if any(x in e for x in ["104", "32", "Unknown login", "530", "331", "111"]):
+							retries = 5
+						self._logger.info("There was an error while trying to connect to the Duet via FTP.  Exception: "+str(e))
+						self.duetFtpConnected = False
+						tryCount += 1
+
+						# try:
+						# 	self.duetFtp.sendcmd('ABOR')
+						# except Exception as subE:
+						# 	self._logger.info("There was further trouble trying to abort the previous connection.  Error: "+str(subE))
+		
+						try:
+							self.duetFtp.quit()
+						except ftplib.all_errors as e:
+							self._logger.info("FTP error while trying to quit, after not being able to connect: "+str(e))
+						except Exception as e:
+							self._logger.info("General error while trying to quit, after not being able to connect: "+str(e))
+				
+						try:
+							self.duetFtp.close()
+						except Exception as e:
+							self._logger.info("Final error while trying to .close() the FTP connection: "+str(e))
+
+				if self.duetFtpConnected:
 					return True
-				except Exception as e:
-					if any(x in e for x in ["104", "32", "Unknown login", "530", "331", "111"]):
-						retries = 5
-					self._logger.info("There was an error while trying to connect to the Duet via FTP.  Exception: "+str(e))
-					self.duetFtpConnected = False
-					tryCount += 1
+				else:
+					return False
 
-					# try:
-					# 	self.duetFtp.sendcmd('ABOR')
-					# except Exception as subE:
-					# 	self._logger.info("There was further trouble trying to abort the previous connection.  Error: "+str(subE))
-	
-					try:
-						self.duetFtp.quit()
-					except ftplib.all_errors as e:
-						self._logger.info("FTP error while trying to quit, after not being able to connect: "+str(e))
-					except Exception as e:
-						self._logger.info("General error while trying to quit, after not being able to connect: "+str(e))
-			
-					try:
-						self.duetFtp.close()
-					except Exception as e:
-						self._logger.info("Final error while trying to .close() the FTP connection: "+str(e))
-
-			if self.duetFtpConnected:
-				return True
 			else:
-				return False
+				# u1printer7p040.local/duet/rr_connect?password=ftppass
+				self.duetFtpConnected = False
+				while (not self.duetFtpConnected) and (tryCount <= retries):
+
+					try:
+						r = requests.get("http://{}/rr_connect?password={}".format(self.duetFtpIp, self.duetFtpPassword))
+						if r.status_code == requests.codes.ok:
+							self.duetFtpConnected = True
+							tryCount += 1
+							return True
+						else:
+							self.duetFtpConnected = False
+							tryCount += 1
+
+					except Exception as e:
+						self._logger.info("Exception while trying to establish HTTP connection to Duet: {}".format(str(e)))
+						self.duetFtpConnected = False
+						tryCount += 1
+
+				if self.duetFtpConnected:
+					return True
+				else:
+					return False
+
+
+
+
 
 		else:
 			self._logger.info("rrfFtpConnect called while already connected.")
 			return True
 
 	def checkRrfConnection(self):
-		try:
-			if self.duetFtp is not None:
-				try:
-					self.duetFtp.sendcmd('NOOP')
-					return True
-				except ftplib.all_errors as e:
-					self._logger.info("Error when checking FTP connection with NOOP: "+str(e))
+		if not self.rrfUseHTTP:
+			try:
+				if self.duetFtp is not None:
 					try:
-						self.duetFtp.close()
-						self.duetFtpConnected = False						
-						return False
-					except Exception as e:
-						self._logger.info("Further error while trying to close: "+str(e))
-						self.duetFtpConnected = False						
-						return False
-		except NameError as e:
-			self._logger.info("NameError while trying to check FTP connection; duetFtp not instantiated?  Error: "+str(e))
-			self.duetFtpConnected = False
-			return False
+						self.duetFtp.sendcmd('NOOP')
+						return True
+					except ftplib.all_errors as e:
+						self._logger.info("Error when checking FTP connection with NOOP: "+str(e))
+						try:
+							self.duetFtp.close()
+							self.duetFtpConnected = False						
+							return False
+						except Exception as e:
+							self._logger.info("Further error while trying to close: "+str(e))
+							self.duetFtpConnected = False						
+							return False
+			except NameError as e:
+				self._logger.info("NameError while trying to check FTP connection; duetFtp not instantiated?  Error: "+str(e))
+				self.duetFtpConnected = False
+				return False
 
-		except Exception as e:
-			self._logger.info("Other error while checking connection: "+str(e))
-			self.duetFtpConnected = False
-			return False
+			except Exception as e:
+				self._logger.info("Other error while checking connection: "+str(e))
+				self.duetFtpConnected = False
+				return False
+
+		else:
+			try:
+				r = requests.get("http://{}/rr_reply".format(self.duetFtpIp))
+				if r.status_code == requests.codes.ok:
+					self.duetFtpConnected = True
+					return True
+				else:
+					self.duetFtpConnected = False
+					return False
+
+			except Exception as e:
+				self._logger.info("Other error while checking connection (HTTP): "+str(e))
+				self.duetFtpConnected = False
+				return False
 
 
 
@@ -1680,34 +1738,77 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 
 
 			elif ftpAction["command"] == 'download' and ftpAction["target"] != "none":
-				self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),open(str(ftpAction["target"]), 'wb').write) #TODO - figure out and reconfigure this to download to a specific base directory, so we're not writing to wherever it defaults to (oprint bin because that's the Python executable source?)
+				if not self.rrfUseHTTP:
+					self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),open(str(ftpAction["target"]), 'wb').write) #TODO - figure out and reconfigure this to download to a specific base directory, so we're not writing to wherever it defaults to (oprint bin because that's the Python executable source?)
+				else:
+					try:
+						with open(str(ftpAction["target"]), "wb") as downloadFile:
+							downloadFile.write(requests.get("http://{}/rr_download?name={}".format(self.duetFtpIp, str(ftpAction["target"]))).content)
+					except Exception as e:
+						self._logger.info("Could not download file {} due to an exception: {}".format(str(ftpAction["target"]), str(e)))
+	# 					r = requests.get("http://{}/rr_reply".format(self.duetFtpIp))
+	# 						>>> with open("/home/pi/configDownloadTest", "wb") as downloadFile:
+	# ...     downloadFile.write(requests.get("http://{}/rr_download?name=sys/config.g".format(duetip)).content)
+	# ...
+	# 7348
+
+
 
 			elif ftpAction["command"] == 'openConfig':
 				if self.duetFtpConfig.getvalue() != '':
 					self.duetFtpConfig.close()
 					self.duetFtpConfig = StringIO()
-				self.duetFtp.sendcmd('CWD /')
+
 				ftpAction["target"] = 'sys/config.g'
-				# self.duetFtp.sendcmd('CWD sys') #shouldn't be needed if we always specify exact location
-				self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),self.duetFtpConfig.write)
-				# self._logger.info("Retrieved file "+str(ftpAction["target"])+", contents: "+self.duetFtpConfig.getvalue())
-				self.duetFtpConfigLines = self.duetFtpConfig.getvalue().splitlines(True)
-				# self._logger.info(self.duetFtpConfigLines)
-				self._logger.info("Config file retrieved.  Not logging the full file.")
+
+				if not self.rrfUseHTTP:
+
+					self.duetFtp.sendcmd('CWD /')
+					# self.duetFtp.sendcmd('CWD sys') #shouldn't be needed if we always specify exact location
+					self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),self.duetFtpConfig.write)
+					# self._logger.info("Retrieved file "+str(ftpAction["target"])+", contents: "+self.duetFtpConfig.getvalue())
+					self.duetFtpConfigLines = self.duetFtpConfig.getvalue().splitlines(True)
+					# self._logger.info(self.duetFtpConfigLines)
+					self._logger.info("Config file retrieved.  Not logging the full file.")
+
+				else:
+					try:
+						# with open(str(ftpAction["target"]), "wb") as downloadFile:
+						self.duetFtpConfig.write(requests.get("http://{}/rr_download?name={}".format(self.duetFtpIp, str(ftpAction["target"]))).text)
+						self.duetFtpConfigLines = self.duetFtpConfig.getvalue().splitlines(True)
+					except Exception as e:
+						self._logger.info("Could not download config file {} over HTTP due to an exception: {}".format(str(ftpAction["target"]), str(e)))
+
 
 				self.processRrfConfig()
 
+
+
+
 			elif ftpAction["command"] == 'open' and ftpAction["target"] != "none":
-				self.duetFtp.sendcmd('CWD /')
-				# self.duetFtp.sendcmd('CWD sys') #shouldn't be needed if we always specify exact location
-				self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),self.duetFtpOtherFile.write)
-				self._logger.info("Retrieved file "+str(ftpAction["target"])+", contents: "+self.duetFtpOtherFile.getvalue())
+				if not self.rrfUseHTTP:
+					self.duetFtp.sendcmd('CWD /')
+					# self.duetFtp.sendcmd('CWD sys') #shouldn't be needed if we always specify exact location
+					self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),self.duetFtpOtherFile.write)
+					self._logger.info("Retrieved file "+str(ftpAction["target"])+", contents: "+self.duetFtpOtherFile.getvalue())
+				else:
+
+					try:
+						# with open(str(ftpAction["target"]), "wb") as downloadFile:
+						self.duetFtpOtherFile.write(requests.get("http://{}/rr_download?name={}".format(self.duetFtpIp, str(ftpAction["target"]))).content)
+						# self.duetFtpConfigLines = self.duetFtpConfig.getvalue().splitlines(True)
+						self._logger.info("Retrieved file "+str(ftpAction["target"])+" (over HTTP), contents: "+self.duetFtpOtherFile.getvalue())
+
+					except Exception as e:
+						self._logger.info("Could not download other file {} over HTTP due to an exception: {}".format(str(ftpAction["target"]), str(e)))
+
 
 
 			elif ftpAction["command"] == 'saveConfig':
 				self._logger.info("FTP save starting?")
-				self.duetFtp.sendcmd('CWD /')
-				self._logger.info("FTP changed, to /")
+				if not self.rrfUseHTTP:
+					self.duetFtp.sendcmd('CWD /')
+					self._logger.info("FTP changed, to /")
 
 				with open(self._basefolder+"/logs/backup/config.g.backup-{0}".format(str(datetime.datetime.now().strftime('%y-%m-%d_%H-%M'))), "w") as configBackup:
 					configBackup.write(self.duetFtpConfig.getvalue())
@@ -1724,9 +1825,16 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 				# 	ftpAction["newContents"] = self.duetFtpConfig.getvalue()
 				# self.duetFtp.storbinary('STOR sys/testConfigExport.g', StringIO(self.duetFtpConfig.getvalue()))
 				self.duetFtpConfigLines.append('\n; Custom config exported from plugin at {0}\n'.format(str(datetime.datetime.now().strftime('%y-%m-%d.%H:%M'))))
-				self.duetFtp.storbinary('STOR sys/config.g', StringIO(''.join(self.duetFtpConfigLines)))
-				self._printer.commands(["M502"])
 
+				if not self.rrfUseHTTP:
+					self.duetFtp.storbinary('STOR sys/config.g', StringIO(''.join(self.duetFtpConfigLines)))
+				else:
+					r = requests.post("http://{}/rr_upload?name={}".format(self.duetFtpIp, "sys/config.g"), data = StringIO(''.join(self.duetFtpConfigLines)))
+# >>> print(requests.post("http://{}/rr_upload?name={}".format(duetip, "sys/testUpload.g"), data=open("/home/pi/testUpload.g")))
+# <Response [200]>
+# >>>
+
+				self._printer.commands(["M502"])
 				self._logger.info("FTP save complete")
 
 
@@ -1734,7 +1842,9 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 				if ftpAction["target"] != "none":
 					# Strip out just the filename for saving a backup to local disk, but use the full name for storing via FTP.
 					self._logger.info("FTP save starting.")
-					self.duetFtp.sendcmd('CWD /')
+					if not self.rrfUseHTTP:
+						self.duetFtp.sendcmd('CWD /')
+
 					self._logger.info("FTP changed, to /")
 					isolatedFileName = ''
 					if "/" in ftpAction["target"]:
@@ -1745,16 +1855,22 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 					with open(self._basefolder+"/logs/backup/"+isolatedFileName+".backup-{0}".format(str(datetime.datetime.now().strftime('%y-%m-%d_%H-%M'))), "w") as fileBackup:
 						fileBackup.write(self.duetFtpOtherFile.getvalue())
 
-					self.duetFtp.storbinary('STOR '+ftpAction["target"], StringIO(''.join(self.duetFtpOtherFileLines)))
-					self._printer.commands(["M502"])
 
+					if not self.rrfUseHTTP:
+						self.duetFtp.storbinary('STOR '+ftpAction["target"], StringIO(''.join(self.duetFtpOtherFileLines)))
+					else:
+						r = requests.post("http://{}/rr_upload?name={}".format(self.duetFtpIp, str(ftpAction["target"])), data = StringIO(''.join(self.duetFtpOtherFileLines)))
+
+					self._printer.commands(["M502"])
 					self._logger.info("FTP save complete?")
+
 
 			elif ftpAction["command"] == 'uploadFile':
 				if ftpAction["target"] != "none" and ftpAction["sourceFile"] != "none":
 					# Strip out just the filename for saving a backup to local disk, but use the full name for storing via FTP.
 					self._logger.info("FTP upload starting.")
-					self.duetFtp.sendcmd('CWD /')
+					if not self.rrfUseHTTP:
+						self.duetFtp.sendcmd('CWD /')
 					self._logger.info("FTP changed, to /")
 					# isolatedFileName = ''
 					# if "/" in ftpAction["target"]:
@@ -1762,8 +1878,12 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 					# else:
 					# 	isolatedFileName = ftpAction["target"]
 
-					with open(ftpAction["sourceFile"]) as contentsToUpload:
-						self.duetFtp.storbinary('STOR '+ftpAction["target"], contentsToUpload)
+					with open(ftpAction["sourceFile"], "rb") as contentsToUpload:
+						if not self.rrfUseHTTP:
+							self.duetFtp.storbinary('STOR '+ftpAction["target"], contentsToUpload)
+						else:
+							r = requests.post("http://{}/rr_upload?name={}".format(self.duetFtpIp, str(ftpAction["target"])), data = contentsToUpload)
+
 					# self._printer.commands(["M502"])
 
 					self._logger.info("FTP save complete?")
@@ -1771,7 +1891,8 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 			elif ftpAction["command"] == 'backupFile':
 				if ftpAction["target"] != "none":
 					self._logger.info("FTP backup starting.")
-					self.duetFtp.sendcmd('CWD /')
+					if not self.rrfUseHTTP:
+						self.duetFtp.sendcmd('CWD /')
 					self._logger.info("FTP changed, to /")
 					isolatedFileName = ''
 					if "/" in ftpAction["target"]:
@@ -1779,8 +1900,12 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 					else:
 						isolatedFileName = ftpAction["target"]
 
-					with open(self._basefolder+"/logs/backup/"+isolatedFileName+".backup-{0}".format(str(datetime.datetime.now().strftime('%y-%m-%d_%H-%M'))), "w") as fileBackup:
-						self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),fileBackup.write)
+					with open(self._basefolder+"/logs/backup/"+isolatedFileName+".backup-{0}".format(str(datetime.datetime.now().strftime('%y-%m-%d_%H-%M'))), "wb") as fileBackup:
+						if not self.rrfUseHTTP:
+							self.duetFtp.retrbinary('RETR '+str(ftpAction["target"]),fileBackup.write)
+						else:
+							fileBackup.write(requests.get("http://{}/rr_download?name={}".format(self.duetFtpIp, str(ftpAction["target"]))).content)
+
 
 
 		except ftplib.all_errors as e:
@@ -2087,7 +2212,9 @@ class MGSetupPlugin(octoprint.plugin.StartupPlugin,
 #__plugin_settings_overlay__ = dict(appearance=dict(components=dict(order=dict(tab=[MGSetupPlugin().firstTabName]))))
 #__plugin_settings_overlay__ = dict(server=dict(port=5001))
 
-__plugin_name__ = "MakerGear Setup"
+__plugin_name__ = "MakerGear Setup for U1"
+#__plugin_pythoncompat__ = ">=2.7,<4"
+__plugin_pythoncompat__ = ">=2.7,<4"
 
 __plugin_implementation__ = MGSetupPlugin()
 

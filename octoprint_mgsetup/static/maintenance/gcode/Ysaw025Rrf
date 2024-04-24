@@ -11,17 +11,9 @@
 M104 T0 S{{targetT0}}
 M104 T1 S{{targetT1}}
 M140 S{{targetBed}}
-M140 P0 S{{targetBed}}
-M140 P1 S{{targetBed+2}}
-M140 P2 S{{targetBed+4}}
-M140 P3 S{{targetBed+4}}
 M109 T0 S{{targetT0}}
 M109 T1 S{{targetT1}}
 M190 S{{targetBed}}
-M190 P0 S{{targetBed}}
-M190 P1 S{{targetBed+2}}
-M190 P2 S{{targetBed+4}}
-M190 P3 S{{targetBed+4}}
 {% endif %}
 
 

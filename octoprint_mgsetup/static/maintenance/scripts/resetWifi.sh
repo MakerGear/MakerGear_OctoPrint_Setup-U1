@@ -1,9 +1,8 @@
 #!/bin/sh
 
-echo "Resetting Network to AP mode and restarting printer"
+echo "Resetting network settings and restarting printer"
 sudo netconnectcli forget_wifi
-sudo \cp /home/pi/.octoprint/scripts/interfaces /etc/network/interfaces
-netconnectcli start_ap
+netconnectcli stop_ap
 echo "Netconnectd Wifi forgotten!"
 echo "Restarting"
 
